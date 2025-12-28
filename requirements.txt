@@ -1,0 +1,8 @@
+pandas
+requests
+beautifulsoup4
+lxml
+feedparser
+playwright
+openpyxl
+#playwright install

@@ -70,8 +70,7 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl", mode="w") as writer:
         # -----------------------------
         schemes_df = scrape_schemes(company)
         if not schemes_df.empty:
-            schemes_df.insert(0, "Section", "Schemes")
-
+        
             schemes_df.to_excel(
                 writer,
                 sheet_name=sheet,

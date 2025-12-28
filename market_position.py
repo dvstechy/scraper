@@ -31,7 +31,21 @@ def normalize_make(make):
 
 def extract_period(soup):
     heading = soup.find(["h1", "h2", "h3"], string=re.compile("flash", re.I))
-    return clean(heading.get_text()) if heading else "Unknown Period"
+    if not heading:
+        return "Unknown Period"
+
+    text = clean(heading.get_text())
+
+    # Try to extract Month Year (e.g. November 2025)
+    match = re.search(
+        r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}",
+        text
+    )
+
+    if match:
+        return match.group(0)
+
+    return text
 
 def scrape_market_position(companies):
     soup = get_soup(URLS["market_position"])
@@ -66,11 +80,11 @@ def scrape_market_position(companies):
         units = company_units.get(company, 0)
         share = (units / total_units * 100) if total_units else 0
         data.append({
-            "Company": company,
+            "Company":company,
             "Units Sold": units,
             "Market Share (%)": round(share, 2),
             "Period": period,
-            "Source": "MarkLines"
+            "Source": URLS["market_position"]
         })
 
     df = pd.DataFrame(data).sort_values("Units Sold", ascending=False)
