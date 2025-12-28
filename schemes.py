@@ -19,6 +19,4 @@ def scrape_schemes(company):
             "Link": entry.link
         })
 
-    print(f"Schemes fetched for {company}: {len(rows)}")
-
     return pd.DataFrame(rows)

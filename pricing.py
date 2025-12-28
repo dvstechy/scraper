@@ -1,47 +1,93 @@
-# pricing.py
-# Headless pricing scraper using CarDekho only
-
 from playwright.sync_api import sync_playwright
+import re
+
+COMPANY_URLS = {
+    "Maruti Suzuki": "maruti-suzuki-cars",
+    "Hyundai": "cars/Hyundai",
+    "Mahindra": "cars/Mahindra",
+    "Kia": "cars/Kia",
+    "MG Motor": "cars/MG",
+    "Toyota": "toyota-cars",
+    "Honda": "cars/Honda",
+    "Renault": "cars/Renault",
+    "Nissan": "cars/Nissan",
+    "Skoda": "cars/Skoda",
+    "Volkswagen": "cars/Volkswagen",
+    "BYD": "cars/BYD",
+    "Volvo": "cars/Volvo",
+    "Tata Motors": "cars/Tata"
+}
 
 class PricingScraper:
     def __init__(self):
         self.playwright = sync_playwright().start()
-        self.browser = self.playwright.chromium.launch(
-            headless=True   # ✅ NO BROWSER UI
-        )
-        self.context = self.browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        )
-        self.page = self.context.new_page()
+        self.browser = self.playwright.chromium.launch(headless=True)
+        self.page = self.browser.new_page()
 
     def get_company_pricing(self, company):
-        cardekho_price = "Not Available"
+        slug = COMPANY_URLS.get(company)
+        if not slug:
+            return None
 
-        try:
-            brand = company.split()[0]
+        self.page.goto(f"https://www.cardekho.com/{slug}", timeout=60000)
+        self.page.wait_for_timeout(5000)
 
-            self.page.goto(
-                f"https://www.cardekho.com/cars/{brand}",
-                timeout=60000
-            )
+        # -------------------------
+        # SCRAPE SUMMARY TEXT
+        # -------------------------
+        summary_text = self.page.locator(
+            "div.carSummary p"
+        ).first.inner_text()
 
-            # wait for JS content
-            self.page.wait_for_timeout(7000)
+        total_models = "Not found"
+        types_of_cars = "Not found"
 
-            # trigger lazy load
+        tm = re.search(r"total of (\d+) car models", summary_text)
+        if tm:
+            total_models = int(tm.group(1))
+
+        tc = re.search(r"including (.+)", summary_text)
+        if tc:
+            types_of_cars = tc.group(1).strip(".")
+
+        company_summary = {
+            "Section": "Pricing Summary",
+            "Company": company,
+            "Total Models": total_models,
+            "Types of Cars": types_of_cars
+        }
+
+        # -------------------------
+        # SCRAPE MODEL PRICES
+        # -------------------------
+        for _ in range(5):
             self.page.mouse.wheel(0, 3000)
-            self.page.wait_for_timeout(3000)
+            self.page.wait_for_timeout(1500)
 
-            prices = self.page.locator("text=₹").all_inner_texts()
-            prices = list(dict.fromkeys(prices))  # remove duplicates
+        cards = self.page.locator("h3").locator("xpath=ancestor::div[contains(@class,'listView')]")
 
-            if prices:
-                cardekho_price = " | ".join(prices[:3])
+        model_rows = []
 
-        except Exception:
-            cardekho_price = "Fetch Failed"
+        for i in range(cards.count()):
+            card = cards.nth(i)
 
-        return cardekho_price
+            name = card.locator("h3").inner_text().strip()
+            price = "Not Available"
+
+            if card.locator("div.price").count() > 0:
+                price = card.locator("div.price").inner_text().strip()
+
+            model_rows.append({
+                "Section": "Pricing",
+                "Company": company,
+                "Model Name": name,
+                "Price": price
+            })
+
+        return {
+            "company_summary": company_summary,
+            "models": model_rows
+        }
 
     def close(self):
         self.browser.close()

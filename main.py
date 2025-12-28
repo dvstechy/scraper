@@ -6,51 +6,8 @@ from pricing import PricingScraper
 from schemes import scrape_schemes
 from discounts import scrape_discounts
 
-
 import pandas as pd
 from pathlib import Path
-def parse_pricing_text(company, pricing_text):
-    rows = []
-
-    # Total models
-    if "total of" in pricing_text and "car models" in pricing_text:
-        total_models = pricing_text.split("total of")[1].split("car models")[0].strip()
-    else:
-        total_models = "Not found"
-
-    # Types of cars
-    if "including" in pricing_text:
-        types = pricing_text.split("including")[1].split(".")[0].strip()
-    else:
-        types = "Not found"
-
-    # Extract model-price pairs
-    import re
-    model_price_matches = re.findall(
-        r'([A-Za-z ]+)\s*\(₹([0-9\.\- ]+Lakh)\)',
-        pricing_text
-    )
-
-    if not model_price_matches:
-        rows.append({
-            "Section": "Pricing",
-            "Total Models": total_models,
-            "Types of Cars": types,
-            "Model Name": "All models",
-            "Price": pricing_text
-        })
-    else:
-        for model, price in model_price_matches:
-            rows.append({
-                "Section": "Pricing",
-                "Total Models": total_models,
-                "Types of Cars": types,
-                "Model Name": model.strip(),
-                "Price": f"₹{price}"
-            })
-
-    return pd.DataFrame(rows)
-
 
 OUTPUT_FILE = Path("output/auto_market_data.xlsx")
 OUTPUT_FILE.parent.mkdir(exist_ok=True)
@@ -63,13 +20,11 @@ pricing_scraper = PricingScraper()
 
 
 with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl", mode="w") as writer:
-    pd.DataFrame([{"Info": "Scraping started"}]).to_excel(
-        writer, sheet_name="INFO", index=False
-    )
 
     for company in COMPANIES:
         print(f"Scraping {company}...")
         start_row = 0
+        pricing_data = pricing_scraper.get_company_pricing(company)
         sheet = company[:31]
         written = False
 
@@ -80,10 +35,6 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl", mode="w") as writer:
 
         if not mp_df.empty:
             combined = mp_df.reset_index(drop=True)
-
-            car_dekho_price = pricing_scraper.get_company_pricing(company)
-            #combined["Pricing (CarDekho)"] = car_dekho_price
-            pricing_text = car_dekho_price
 
             combined.insert(0, "Section", "Market Position")
 
@@ -119,7 +70,6 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl", mode="w") as writer:
         # -----------------------------
         schemes_df = scrape_schemes(company)
         if not schemes_df.empty:
-            schemes_df = schemes_df.copy()
             schemes_df.insert(0, "Section", "Schemes")
 
             schemes_df.to_excel(
@@ -128,28 +78,35 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl", mode="w") as writer:
                 startrow=start_row,
                 index=False
             )
+            start_row += len(schemes_df) + 3
 
         # -----------------------------
-        # Pricing Parsed Table
+        # Pricing (Structured)
         # -----------------------------
-        pricing_table_df = parse_pricing_text(company, pricing_text)
-
-        pricing_table_df.to_excel(
-        writer,
-        sheet_name=sheet,
-        startrow=start_row + len(schemes_df) + 3,
-        index=False
-        )
-
-        start_row = start_row + len(schemes_df) + len(pricing_table_df) + 6
-
-        written = True
-        if not written:
-            pd.DataFrame([{
-                "Info": f"No data available for {company}"
-            }]).to_excel(
-                writer, sheet_name=sheet, index=False
+        if pricing_data:
+        # Company-level summary
+            summary_df = pd.DataFrame([pricing_data["company_summary"]])
+            summary_df.to_excel(
+                writer,
+                sheet_name=sheet,
+                startrow=start_row,
+                index=False
             )
+
+            start_row += len(summary_df) + 2
+
+            # Model-level pricing
+            models_df = pd.DataFrame(pricing_data["models"])
+
+            models_df.to_excel(
+                writer,
+                sheet_name=sheet,
+                startrow=start_row,
+                index=False
+            )
+
+            start_row += len(models_df) + 4
+
 
 # ✅ CLOSE BROWSER ONCE AT END
 pricing_scraper.close()
