@@ -72,17 +72,28 @@ class PricingScraper:
             card = cards.nth(i)
 
             name = card.locator("h3").inner_text().strip()
+            model_url = card.locator("a").first.get_attribute("href")
+
+            if model_url and model_url.startswith("/"):
+                model_url = "https://www.cardekho.com" + model_url
+
             price = "Not Available"
 
             if card.locator("div.price").count() > 0:
                 price = card.locator("div.price").inner_text().strip()
 
+            body_type = "Unknown"
+            if model_url:
+                body_type = self.get_body_type(model_url)
+
             model_rows.append({
-                "Section": "Pricing",
-                "Company": company,
-                "Model Name": name,
-                "Price": price
+            "Section": "Pricing",
+            "Company": company,
+            "Model Name": name,
+            "Body Type": body_type,
+            "Price": price
             })
+
 
         return {
             "company_summary": company_summary,
@@ -92,3 +103,32 @@ class PricingScraper:
     def close(self):
         self.browser.close()
         self.playwright.stop()
+
+    def get_body_type(self, model_url):
+        try:
+            model_page = self.browser.new_page()
+            specs_url = model_url.rstrip("/") + "/specs"
+            model_page.goto(model_url, timeout=60000)
+            model_page.wait_for_timeout(3000)
+
+            # Try structured spec first
+            rows = model_page.locator("tr")
+
+            for i in range(rows.count()):
+                row_text = rows.nth(i).inner_text()
+                if "Body Type" in row_text():
+                    parts = row_text.split("\n")
+                    if len(parts) >= 2:
+                        model_page.close()
+                        return parts[1].strip()
+                    
+
+            # Fallback: text-based detection
+            page_text = model_page.inner_text("body")
+            match = re.search(r"Body Type\s*(SUV|Hatchback|Sedan|MUV|MPV|Coupe)", page_text, re.I)
+
+            model_page.close()
+            return match.group(1) if match else "Unknown"
+
+        except Exception as e:
+            return "Unknown"
