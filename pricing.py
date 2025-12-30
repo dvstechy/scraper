@@ -108,21 +108,21 @@ class PricingScraper:
         try:
             model_page = self.browser.new_page()
             specs_url = model_url.rstrip("/") + "/specs"
-            model_page.goto(model_url, timeout=60000)
-            model_page.wait_for_timeout(3000)
+            model_page.goto(specs_url, timeout=60000)
+            model_page.wait_for_selector("table", timeout=10000)
 
             # Try structured spec first
             rows = model_page.locator("tr")
 
             for i in range(rows.count()):
-                row_text = rows.nth(i).inner_text()
-                if "Body Type" in row_text():
-                    parts = row_text.split("\n")
-                    if len(parts) >= 2:
-                        model_page.close()
-                        return parts[1].strip()
-                    
+                row = rows.nth(i)
+                key = row.locator("td").nth(0).inner_text().strip()
 
+                if key.lower() == "body type":
+                    value = row.locator("td").nth(1).inner_text().strip()
+                    model_page.close()
+                    return value
+                    
             # Fallback: text-based detection
             page_text = model_page.inner_text("body")
             match = re.search(r"Body Type\s*(SUV|Hatchback|Sedan|MUV|MPV|Coupe)", page_text, re.I)
