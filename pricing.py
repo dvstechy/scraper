@@ -108,7 +108,7 @@ class PricingScraper:
         self.browser.close()
         self.playwright.stop()
 
-    def normalize_model_url(model_url):
+    def normalize_model_url(self,model_url):
         # carmodels → seo
         if "/carmodels/" in model_url:
             parts = model_url.split("/")
@@ -161,5 +161,3 @@ class PricingScraper:
         page.close()
         print("[WARN] Body Type not found for model")
         return "Unknown"
-
-    

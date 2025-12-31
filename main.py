@@ -5,11 +5,14 @@ from market_position import scrape_market_position
 from pricing import PricingScraper
 from schemes import scrape_schemes
 from discounts import scrape_discounts
-
+from datetime import datetime
 import pandas as pd
 from pathlib import Path
 
-OUTPUT_FILE = Path("output/auto_market_data.xlsx")
+timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+OUTPUT_FILE = Path(f"output/auto_market_data_{timestamp}.xlsx")
+
 OUTPUT_FILE.parent.mkdir(exist_ok=True)
 
 print("Fetching Market Position once...")
@@ -36,9 +39,6 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl", mode="w") as writer:
 
         if not mp_df.empty:
             combined = mp_df.reset_index(drop=True)
-
-            combined.insert(0, "Section", "Market Position")
-
             combined.to_excel(
                 writer,
                 sheet_name=sheet,
@@ -119,24 +119,45 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl", mode="w") as writer:
     # -----------------------------
     if all_models:
         df_all = pd.DataFrame(all_models)
-        segments = sorted(df_all["Segment"].unique())  # sort segments alphabetically
+        segments = sorted(df_all["Segment"].dropna().unique())  # sort segments alphabetically
         start_row = 0
 
         for segment in segments:
-            segment_df = df_all[df_all["Segment"] == segment][["Company", "Segment", "Model Name", "Price"]]
-
-            # Add a header row for the segment
-            header_df = pd.DataFrame([{
-                "Company": f"Segment: {segment}", "Segment": "", "Model Name": "", "Price": ""
-            }])
-            header_df.to_excel(writer, sheet_name="Segment Comparison", startrow=start_row, index=False)
+            title_df = pd.DataFrame(
+                [[f"Segment: {segment}", "", ""]],
+                columns=["Company", "Model Name", "Price"]
+            )
+            title_df.to_excel(
+                writer,
+                sheet_name="Segment Comparison",
+                startrow=start_row,
+                index=False,
+                header=False
+            )
             start_row += 1
 
-            # Write the actual data
-            segment_df.to_excel(writer, sheet_name="Segment Comparison", startrow=start_row, index=False)
-            start_row += len(segment_df) + 2
+            # Segment data
+            segment_df = (
+                df_all[df_all["Segment"] == segment]
+                [["Company", "Model Name", "Price"]]
+                .reset_index(drop=True)
+            )
+
+            segment_df.to_excel(
+                writer,
+                sheet_name="Segment Comparison",
+                startrow=start_row,
+                index=False,
+                header=True
+            )
+
+            # Leave space after each segment
+            start_row += len(segment_df) + 3
 
 # ✅ CLOSE BROWSER ONCE AT END
 pricing_scraper.close()
 
 print("✅ auto_market_data.xlsx generated successfully")
+
+
+
