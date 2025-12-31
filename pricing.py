@@ -82,15 +82,17 @@ class PricingScraper:
             if card.locator("div.price").count() > 0:
                 price = card.locator("div.price").inner_text().strip()
 
-            body_type = "Unknown"
-            if model_url:
-                body_type = self.get_body_type(model_url)
+            fuel_type = "Unknown"
+            if card.locator("div.dotlist span").count() > 0:
+                fuel_type = card.locator("div.dotlist span").first.inner_text().strip()
+
+            body_type = self.get_body_type(model_url) if model_url else "Unknown"
 
             model_rows.append({
             "Section": "Pricing",
-            "Company": company,
             "Model Name": name,
             "Body Type": body_type,
+            "Fuel Type":fuel_type,
             "Price": price
             })
 
@@ -101,34 +103,63 @@ class PricingScraper:
         }
 
     def close(self):
+        if hasattr(self, "model_page"):
+            self.model_page.close()
         self.browser.close()
         self.playwright.stop()
 
+    def normalize_model_url(model_url):
+        # carmodels → seo
+        if "/carmodels/" in model_url:
+            parts = model_url.split("/")
+            brand = parts[-2].lower()
+            model = parts[-1].lower().replace("_", "-")
+            return f"https://www.cardekho.com/{brand}/{model}"
+        return model_url.rstrip("/")
+
+
     def get_body_type(self, model_url):
-        try:
-            model_page = self.browser.new_page()
-            specs_url = model_url.rstrip("/") + "/specs"
-            model_page.goto(specs_url, timeout=60000)
-            model_page.wait_for_selector("table", timeout=10000)
+        page = self.browser.new_page()
+        page.set_default_timeout(30000)
+        model_url = self.normalize_model_url(model_url)
+        possible_urls = [
+            model_url + "/specs",
+            model_url.replace(".htm", "") + "-specifications.htm"
+        ]
+        for url in possible_urls:
+            try:
+                print(f"[INFO] Trying URL: {url}")
+                page.goto(url, wait_until="domcontentloaded")
 
-            # Try structured spec first
-            rows = model_page.locator("tr")
+                page.wait_for_timeout(3000)
+                page.mouse.wheel(0, 2000)
+                page.wait_for_timeout(3000)
 
-            for i in range(rows.count()):
-                row = rows.nth(i)
-                key = row.locator("td").nth(0).inner_text().strip()
+                # ✅ IMPORTANT FIX
+                page.wait_for_selector("table.keyfeature", timeout=15000)
 
-                if key.lower() == "body type":
-                    value = row.locator("td").nth(1).inner_text().strip()
-                    model_page.close()
-                    return value
-                    
-            # Fallback: text-based detection
-            page_text = model_page.inner_text("body")
-            match = re.search(r"Body Type\s*(SUV|Hatchback|Sedan|MUV|MPV|Coupe)", page_text, re.I)
+                rows = page.locator("table.keyfeature tr")
+                print(f"[DEBUG] Rows found: {rows.count()}")
 
-            model_page.close()
-            return match.group(1) if match else "Unknown"
+                for i in range(rows.count()):
+                    tds = rows.nth(i).locator("td")
+                    if tds.count() >= 2:
+                        key = tds.nth(0).inner_text().strip().lower()
+                        value = tds.nth(1).inner_text().strip()
 
-        except Exception as e:
-            return "Unknown"
+                        print(f"[TRACE] {key} = {value}")
+
+                        if key in ("body type", "body style"):
+                            print(f"[SUCCESS] Body Type found: {value}")
+                            page.close()
+                            return value
+
+            except Exception as e:
+                print(f"[WARN] Failed on {url}: {e}")
+                continue
+
+        page.close()
+        print("[WARN] Body Type not found for model")
+        return "Unknown"
+
+    

@@ -20,6 +20,7 @@ pricing_scraper = PricingScraper()
 
 
 with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl", mode="w") as writer:
+    all_models = []
 
     for company in COMPANIES:
         print(f"Scraping {company}...")
@@ -106,6 +107,34 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl", mode="w") as writer:
 
             start_row += len(models_df) + 4
 
+            for model in pricing_data["models"]:
+                all_models.append({
+                    "Company": company,
+                    "Segment": model.get("Body Type", "Unknown"),
+                    "Model Name": model.get("Model Name"),
+                    "Price": model.get("Price")
+                })
+    # -----------------------------
+    # Segment-wise Comparison Sheet
+    # -----------------------------
+    if all_models:
+        df_all = pd.DataFrame(all_models)
+        segments = sorted(df_all["Segment"].unique())  # sort segments alphabetically
+        start_row = 0
+
+        for segment in segments:
+            segment_df = df_all[df_all["Segment"] == segment][["Company", "Segment", "Model Name", "Price"]]
+
+            # Add a header row for the segment
+            header_df = pd.DataFrame([{
+                "Company": f"Segment: {segment}", "Segment": "", "Model Name": "", "Price": ""
+            }])
+            header_df.to_excel(writer, sheet_name="Segment Comparison", startrow=start_row, index=False)
+            start_row += 1
+
+            # Write the actual data
+            segment_df.to_excel(writer, sheet_name="Segment Comparison", startrow=start_row, index=False)
+            start_row += len(segment_df) + 2
 
 # ✅ CLOSE BROWSER ONCE AT END
 pricing_scraper.close()
