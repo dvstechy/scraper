@@ -157,7 +157,8 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl", mode="w") as writer:
 # ✅ CLOSE BROWSER ONCE AT END
 pricing_scraper.close()
 
-print("✅ auto_market_data.xlsx generated successfully")
+print(f"✅ {OUTPUT_FILE.name} generated successfully")
+
 
 
 
