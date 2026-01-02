@@ -26,39 +26,90 @@ COMPANY_URLS = {
 # Pricing SCRAPER
 # -------------------------------------------------
 
+# def fetch_min_max_price(page, company: str):
+#     slug = COMPANY_URLS.get(company)
+#     if not slug:
+#         return None, None
+
+#     url = f"https://www.cardekho.com/{slug}"
+
+#     page.goto(url, timeout=60000)
+
+#     try:
+#         page.wait_for_selector("div.gs_readmore p", timeout=15000)
+#     except:
+#         print(f"[WARN] gs_readmore not found for {company}")
+#         return None, None
+
+#     para_text = page.locator("div.gs_readmore p").first.inner_text()
+
+#     match = re.search(
+#         r"The starting price.*?₹\s*([\d.]+)\s*Lakh.*?₹\s*([\d.]+)\s*Lakh",
+#         para_text,
+#         re.IGNORECASE | re.DOTALL
+#     )
+
+#     if not match:
+#         print(f"[WARN] Price sentence not found for {company}")
+#         return None, None
+
+#     return float(match.group(1)), float(match.group(2))
 def fetch_min_max_price(page, company: str):
     slug = COMPANY_URLS.get(company)
     if not slug:
         return None, None
 
-    url = f"https://www.cardekho.com/{slug}"
-
-    page.goto(url, timeout=60000)
+    page.goto(f"https://www.cardekho.com/{slug}", timeout=60000)
 
     try:
         page.wait_for_selector("div.gs_readmore p", timeout=15000)
     except:
-        print(f"[WARN] gs_readmore not found for {company}")
+        print(f"[WARN] Price text not found for {company}")
         return None, None
 
-    para_text = page.locator("div.gs_readmore p").first.inner_text()
+    text = page.locator("div.gs_readmore p").first.inner_text()
 
-    match = re.search(
-        r"The starting price.*?₹\s*([\d.]+)\s*Lakh.*?₹\s*([\d.]+)\s*Lakh",
-        para_text,
-        re.IGNORECASE | re.DOTALL
+    matches = re.findall(
+        r"₹\s*([\d.]+)\s*(Lakh|Cr)",
+        text,
+        re.IGNORECASE
     )
 
-    if not match:
-        print(f"[WARN] Price sentence not found for {company}")
-        return None, None
+    if len(matches) >= 2:
+        min_price = f"{matches[0][0]} {matches[0][1]}"
+        max_price = f"{matches[1][0]} {matches[1][1]}"
+        return min_price, max_price
 
-    return float(match.group(1)), float(match.group(2))
+    print(f"[WARN] Price pattern not matched for {company}")
+    return None, None
 
 
 # -------------------------------------------------
 # RELIABILITY SCRAPER (MODEL-LEVEL)
 # -------------------------------------------------
+
+# def fetch_brand_overall_rating(page, company):
+#     slug = COMPANY_URLS.get(company)
+#     if not slug:
+#         return None, None, 3
+
+#     page.goto(f"https://www.cardekho.com/{slug}", timeout=60000)
+
+#     try:
+#         page.wait_for_selector("div.startRating", timeout=15000)
+
+#         rating_text = page.locator("span.ratingStarNew").first.inner_text()
+#         rating = float(re.findall(r"[\d.]+", rating_text)[0])
+
+#         reviews_text = page.locator("span.bottomText").first.inner_text()
+#         reviews = reviews_text.replace("|", "").strip()  # "9.2K reviews"
+
+#         score = rating_to_score(rating, reviews)
+
+#         return rating, reviews, score
+
+#     except:
+#         return None, None, 3
 
 def fetch_brand_overall_rating(page, company):
     slug = COMPANY_URLS.get(company)
@@ -74,14 +125,36 @@ def fetch_brand_overall_rating(page, company):
         rating = float(re.findall(r"[\d.]+", rating_text)[0])
 
         reviews_text = page.locator("span.bottomText").first.inner_text()
-        reviews = reviews_text.replace("|", "").strip()  # "9.2K reviews"
+        reviews = reviews_text.replace("|", "").strip()
 
         score = rating_to_score(rating, reviews)
 
         return rating, reviews, score
 
-    except:
+    except Exception as e:
+        print(f"[WARN] Rating fetch failed for {company}: {e}")
         return None, None, 3
+
+
+# def rating_to_score(rating, reviews_text):
+#     try:
+#         reviews_text = reviews_text.lower()
+
+#         if "k" in reviews_text:
+#             count = float(re.findall(r"[\d.]+", reviews_text)[0]) * 1000
+#         else:
+#             count = float(re.findall(r"\d+", reviews_text)[0])
+#     except:
+#         count = 0  # fallback
+
+#     if rating >= 4.5 and count >= 5000:
+#         return 5
+#     elif rating >= 4.0 and count >= 3000:
+#         return 4
+#     elif rating >= 3.5:
+#         return 3
+#     else:
+#         return 2
 
 def rating_to_score(rating, reviews_text):
     try:
@@ -92,17 +165,16 @@ def rating_to_score(rating, reviews_text):
         else:
             count = float(re.findall(r"\d+", reviews_text)[0])
     except:
-        count = 0  # fallback
+        count = 0
 
-    if rating >= 4.5 and count >= 5000:
+    if rating >= 4.5 and count >= 3000:
         return 5
-    elif rating >= 4.0 and count >= 3000:
+    elif rating >= 4.0 and count >= 1500:
         return 4
     elif rating >= 3.5:
         return 3
     else:
         return 2
-
 
 
 # -------------------------------------------------
