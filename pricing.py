@@ -109,33 +109,33 @@ class PricingScraper:
     def get_specs_and_features(self, model_url):
         page = self.browser.new_page()
         page.set_default_timeout(30000)
-
+ 
         model_url = self.normalize_model_url(model_url)
-
+ 
         possible_urls = [
         model_url + "/specs",
         model_url.replace(".htm", "") + "-specifications.htm"
         ]
-
+ 
         specs = {}
         features = []
-
+ 
         for url in possible_urls:
             try:
                 print(f"[INFO] Trying URL: {url}")
                 page.goto(url, wait_until="domcontentloaded")
-
+ 
                 page.wait_for_timeout(3000)
                 page.mouse.wheel(0, 3000)
                 page.wait_for_timeout(3000)
-
+ 
                 # =========================
                 # KEY SPECIFICATIONS
                 # =========================
                 page.wait_for_selector("div[id^='Keyspecification']", timeout=15000)
                 spec_rows = page.locator("div[id^='Keyspecification'] table.keyfeature tr")
                 print(f"[DEBUG] Spec rows found: {spec_rows.count()}")
-
+ 
                 for i in range(spec_rows.count()):
                     tds = spec_rows.nth(i).locator("td")
                     if tds.count() >= 2:
@@ -143,32 +143,39 @@ class PricingScraper:
                         value = tds.nth(1).inner_text().strip()
                         specs[key] = value
                         print(f"[SPEC] {key} = {value}")
-
+ 
                 # =========================
                 # KEY FEATURES
                 # =========================
                 page.wait_for_selector("div[id^='Keyfeatures']", timeout=15000)
                 feature_rows = page.locator("div[id^='Keyfeatures'] table.keyfeature tr")
                 print(f"[DEBUG] Feature rows found: {feature_rows.count()}")
-
+ 
                 for i in range(feature_rows.count()):
-                    tds = feature_rows.nth(i).locator("td")
-                    if tds.count() >= 2:
-                        feature_name = tds.nth(0).inner_text().strip()
-                        value_text = tds.nth(1).inner_text().strip().lower()
-
-                        if "yes" in value_text:
-                            features.append(feature_name)
-
+                    row = feature_rows.nth(i)
+                    tds = row.locator("td")
+ 
+                    if tds.count() < 2:
+                        continue
+ 
+                    feature_name = tds.nth(0).inner_text().strip()
+ 
+                    # Check for tick icon inside second column
+                    has_check_icon = tds.nth(1).locator("i").count() > 0
+ 
+                    if has_check_icon:
+                        features.append(feature_name)
+                        print(f"[FEATURE] {feature_name} = YES")
+ 
                 break  # ✅ success, stop trying other URLs
-
+ 
             except Exception as e:
                 print(f"[WARN] Failed on {url}: {e}")
                 continue
-
+ 
         page.close()
         return specs, ", ".join(features)
-
+ 
     # def get_key_features(self, model_url):
     #     page = self.browser.new_page()
     #     page.set_default_timeout(30000)
@@ -191,12 +198,12 @@ class PricingScraper:
     #             page.wait_for_timeout(3000)
  
     #             page.wait_for_selector("div[id^='Keyfeatures']", timeout=15000)
-
+ 
     #             rows = page.locator("div[id^='Keyfeatures'] table.keyfeature tr")
  
     #             print(f"[DEBUG] Feature rows found: {rows.count()}")
  
-            
+           
     #             for i in range(rows.count()):
     #                 tds = rows.nth(i).locator("td")
     #                 if tds.count() >= 2:
@@ -264,7 +271,7 @@ class PricingScraper:
  
     #                     specs[key] = value
     #                     print(f"[SPEC] {key} = {value}")
-
+ 
     #             break
  
     #                     # if key in ("body type", "body style"):
