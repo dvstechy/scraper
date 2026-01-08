@@ -1,141 +1,128 @@
-import feedparser
-import pandas as pd
-import time
-from urllib.parse import quote_plus
-from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
+import pandas as pd
 import re
- 
- 
-def extract_models_from_text(text, company):
-    models = set()
-    candidates = re.split(r",| and ", text)
- 
-    for chunk in candidates:
-        chunk = chunk.strip()
-        words = chunk.split()
-        if 1 <= len(words) <= 3:
-            name = " ".join(words)
-            if name[0].isupper() and company.lower() not in name.lower():
-                if not any(x in name.lower() for x in ["india", "price", "offer", "scheme", "discount"]):
-                    models.add(name)
- 
-    return list(models)
- 
- 
-def extract_scheme_details(url, company):
-    try:
-        r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-        soup = BeautifulSoup(r.text, "html.parser")
-        text = soup.get_text(" ", strip=True).lower()
- 
-        # === SCHEME SIGNAL FILTER (CRITICAL) ===
-        scheme_signals = ["exchange", "corporate", "loyalty", "festival", "finance", "emi", "dealer"]
-        if not any(word in text for word in scheme_signals):
-            return None  # ❌ Not a scheme article
- 
-        parts = []
- 
-        # Exchange
-        m = re.search(r"exchange.*?₹\s?([\d,]+)", text)
-        if m:
-            parts.append(f"Exchange Bonus: ₹{m.group(1)}")
- 
-        # Corporate
-        m = re.search(r"corporate.*?₹\s?([\d,]+)", text)
-        if m:
-            parts.append(f"Corporate Offer: ₹{m.group(1)}")
- 
-        # Loyalty
-        m = re.search(r"loyalty.*?₹\s?([\d,]+)", text)
-        if m:
-            parts.append(f"Loyalty Bonus: ₹{m.group(1)}")
- 
-        # Finance
-        if "finance" in text or "low emi" in text:
-            parts.append("Finance Scheme Available")
- 
-        # Festival
-        if any(x in text for x in ["festival", "diwali", "dussehra", "navratri", "pongal"]):
-            parts.append("Festival Scheme")
- 
-        # Models
-        models = extract_models_from_text(text, company)
-        if models:
-            parts.append("Models: " + ", ".join(models[:5]))
- 
-        if parts:
-            return " | ".join(parts)
- 
-        return "Scheme mentioned but details not clearly available"
- 
-    except Exception:
-        return None
- 
- 
-def scrape_schemes(company):
-    trusted_sites = (
-        "site:cardekho.com OR site:carwale.com OR site:zigwheels.com OR "
-        "site:autocarindia.com OR site:gaadiwaadi.com OR site:rushlane.com"
-    )
- 
-    scheme_keywords = (
-        '"exchange bonus" OR "exchange offer" OR '
-        '"corporate scheme" OR "corporate discount" OR '
-        '"loyalty bonus" OR "loyalty scheme" OR '
-        '"festival offer" OR "festival scheme" OR '
-        '"finance scheme" OR "low emi" OR '
-        '"dealer scheme" OR "special scheme"'
-    )
- 
-    query = f'{trusted_sites} "{company}" {scheme_keywords}'
-    encoded_query = quote_plus(query)
- 
-    feed_url = (
-        "https://news.google.com/rss/search?"
-        f"q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
-    )
- 
-    cutoff = datetime.now() - timedelta(days=60)
-    rows = []
- 
-    try:
-        feed = feedparser.parse(feed_url)
-    except Exception:
-        return pd.DataFrame()
- 
-    for entry in feed.entries:
-        try:
-            published_dt = datetime(*entry.published_parsed[:6])
-        except Exception:
+from datetime import datetime
+
+COMPANY_NAME_MAP = {
+    "Maruti Suzuki": ["maruti", "nexa"],
+    "Hyundai": ["hyundai"],
+    "Mahindra": ["mahindra"],
+    "Kia": ["kia"],
+    "MG Motor": ["mg"],
+    "Toyota": ["toyota"],
+    "Honda": ["honda"],
+    "Renault": ["renault"],
+    "Nissan": ["nissan"],
+    "Skoda": ["skoda"],
+    "Volkswagen": ["volkswagen", "vw"],
+    "BYD": ["byd"],
+    "Volvo": ["volvo"],
+    "Tata Motors": ["tata"]
+}
+
+
+def is_company_match(text, company):
+    text = text.lower()
+    for keyword in COMPANY_NAME_MAP.get(company, []):
+        if re.search(rf"\b{re.escape(keyword)}\b", text):
+            return True
+    return False
+
+
+def get_month_from_title(title):
+    m = re.search(r"(january|february|march|april|may|june|july|august|september|october|november|december)", title.lower())
+    if m:
+        return m.group(1).title()
+    return datetime.now().strftime("%B")
+
+
+def fetch_all_posts():
+    url = "https://www.autopunditz.com/offers-for-the-month"
+    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+    soup = BeautifulSoup(r.text, "html.parser")
+
+    posts = []
+    for a in soup.select("a[href*='/post/']"):
+        title = a.get_text(strip=True)
+        link = a.get("href")
+        if title and link:
+            if not link.startswith("http"):
+                link = "https://www.autopunditz.com" + link
+            posts.append({"title": title, "link": link})
+
+    # Remove duplicates
+    unique = {}
+    for p in posts:
+        unique[p["link"]] = p
+    return list(unique.values())
+
+
+def extract_tables_from_post(url):
+    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+    soup = BeautifulSoup(r.text, "html.parser")
+
+    all_rows = []
+    for table in soup.find_all("table"):
+        headers = [th.get_text(strip=True) for th in table.find_all("th")]
+        if not headers:
             continue
- 
-        if published_dt < cutoff:
-            continue
- 
-        scheme_info = extract_scheme_details(entry.link, company)
- 
-        # ✅ ONLY add real schemes
-        if scheme_info:
-            rows.append({
-                "Section": "Schemes",
-                "Scheme Details": f"{entry.title} | {scheme_info}",
-                "Published Date": entry.get("published", ""),
-                "Source": "Google News",
-                "Link": entry.link
+        for tr in table.find_all("tr")[1:]:
+            cells = [td.get_text(strip=True) for td in tr.find_all("td")]
+            if len(cells) == len(headers):
+                row = dict(zip(headers, cells))
+                all_rows.append(row)
+    return all_rows
+
+
+def scrape_current_month_schemes():
+    posts = fetch_all_posts()
+    results = []
+
+    for company in COMPANY_NAME_MAP:
+        # Filter posts matching company
+        matched = [p for p in posts if is_company_match(p["title"], company)]
+        if not matched:
+            results.append({
+                "Company": company,
+                "Source": "AutoPunditz",
+                "Month": datetime.now().strftime("%B"),
+                "Model": "",
+                "Offer Type": "",
+                "Offer Details": "No post found for this company",
+                "Link": ""
             })
- 
-    if not rows:
-        rows.append({
-            "Section": "Schemes",
-            "Scheme Details": "No active schemes found in last 2 months",
-            "Published Date": "",
-            "Source": "Google News",
-            "Link": ""
-        })
- 
-    time.sleep(1)
-    return pd.DataFrame(rows)
- 
- 
+            continue
+
+        # Work through matched posts (usually the latest will be first)
+        for post in matched:
+            month = get_month_from_title(post["title"])
+            table_rows = extract_tables_from_post(post["link"])
+
+            if not table_rows:
+                results.append({
+                    "Company": company,
+                    "Source": "AutoPunditz",
+                    "Month": month,
+                    "Model": "",
+                    "Offer Type": "",
+                    "Offer Details": "No table found in post",
+                    "Link": post["link"]
+                })
+                continue
+
+            for row in table_rows:
+                results.append({
+                    "Company": company,
+                    "Source": "AutoPunditz",
+                    "Month": month,
+                    **row,
+                    "Link": post["link"]
+                })
+
+    return pd.DataFrame(results)
+
+
+if __name__ == "__main__":
+    df = scrape_current_month_schemes()
+    print(df)
