@@ -1,47 +1,50 @@
+# main_sch.py
+ 
+from schemes import scrape_schemes
 from config import COMPANIES
-from schemes import scrape_current_month_schemes
-from datetime import datetime
 import pandas as pd
 from pathlib import Path
+from datetime import datetime
+from openpyxl import load_workbook
 
-# ==============================
-# OUTPUT FILE SETUP
-# ==============================
+# Timestamped output
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-OUTPUT_FILE = Path(f"output/schemes_data_{timestamp}.xlsx")
+OUTPUT_FILE = Path(f"output/test_schemes_{timestamp}.xlsx")
 OUTPUT_FILE.parent.mkdir(exist_ok=True)
+ 
 
-print("Starting Scheme Scraping Pipeline...")
+for company in COMPANIES:
+    print(f"Scraping schemes for {company}...")
+    schemes_df = scrape_schemes(company)
 
-# Scrape all companies at once
-all_schemes_df = scrape_current_month_schemes()
+    if schemes_df.empty:
+        print(f"No data for {company}")
+        continue
 
-sheets_written = 0
+    sheet_name = company[:31]
 
-with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl", mode="w") as writer:
-    for company in COMPANIES:
-        print(f"Writing sheet for {company}...")
+    if OUTPUT_FILE.exists():
+        with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl", mode="a", if_sheet_exists="overlay") as writer:
+            if sheet_name in writer.book.sheetnames:
+                start_row = writer.book[sheet_name].max_row + 3
+            else:
+                start_row = 0
 
-        company_df = all_schemes_df[all_schemes_df["Company"] == company]
+            schemes_df.to_excel(
+                writer,
+                sheet_name=sheet_name,
+                index=False,
+                startrow=start_row,
+                header=(start_row == 0)
+            )
+    else:
+        with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl", mode="w") as writer:
+            schemes_df.to_excel(
+                writer,
+                sheet_name=sheet_name,
+                index=False
+            )
 
-        if company_df.empty:
-            # Safety fallback
-            company_df = pd.DataFrame([{
-                "Company": company,
-                "Month": datetime.now().strftime("%B"),
-                "Offer Details": "No active schemes found",
-                "Link": "",
-                "Source": "AutoPunditz"
-            }])
-
-        sheet_name = company[:31]  # Excel sheet name limit
-        company_df.to_excel(writer, sheet_name=sheet_name, index=False)
-        sheets_written += 1
-
-# ==============================
-# FINAL SAFETY CHECK
-# ==============================
-if sheets_written == 0:
-    raise RuntimeError("❌ No sheets were written. Excel file not created.")
-
-print(f"\n✅ Schemes data successfully saved to: {OUTPUT_FILE}")
+print(f"✅ Schemes Excel generated: {OUTPUT_FILE}")
+ 
+ 
