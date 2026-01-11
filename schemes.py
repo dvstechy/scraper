@@ -10,32 +10,32 @@ from PIL import Image
 from io import BytesIO
 import numpy as np
 import cv2
-from paddleocr import PaddleOCR, PPStructure
-
+# from paddleocr import PaddleOCR
+from paddleocr import PPStructure
 import tempfile
 
 
 # ------------------ EASYOCR INIT ------------------
-table_engine = PPStructure(show_log=False)
+table_engine = PPStructure(show_log=False, layout=False, ocr=True, table=True)
 
 
 # ------------------ CONFIG ------------------
 
 COMPANY_NAME_MAP = {
     "Maruti Suzuki": ["maruti", "nexa"],
-    "Hyundai": ["hyundai"]
-    # "Mahindra": ["mahindra"],
-    # "Kia": ["kia"],
-    # "MG Motor": ["mg"],
-    # "Toyota": ["toyota"],
-    # "Honda": ["honda"],
-    # "Renault": ["renault"],
-    # "Nissan": ["nissan"],
-    # "Skoda": ["skoda"],
-    # "Volkswagen": ["volkswagen", "vw"],
-    # "BYD": ["byd"],
-    # "Volvo": ["volvo"],
-    # "Tata Motors": ["tata"]
+    "Hyundai": ["hyundai"],
+    "Mahindra": ["mahindra"],
+    "Kia": ["kia"],
+    "MG Motor": ["mg"],
+    "Toyota": ["toyota"],
+    "Honda": ["honda"],
+    "Renault": ["renault"],
+    "Nissan": ["nissan"],
+    "Skoda": ["skoda"],
+    "Volkswagen": ["volkswagen", "vw"],
+    "BYD": ["byd"],
+    "Volvo": ["volvo"],
+    "Tata Motors": ["tata"]
 }
 
 URL_PATTERNS = {
@@ -97,32 +97,36 @@ def fetch_all_posts():
 def extract_table_from_image_url(image_url):
     print(f"   Downloading image: {image_url}")
 
-    response = requests.get(image_url, timeout=30)
-    image = Image.open(BytesIO(response.content)).convert("RGB")
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-        image.save(tmp.name)
-        image_path = tmp.name
-
     try:
+        response = requests.get(image_url, timeout=30)
+        image = Image.open(BytesIO(response.content)).convert("RGB")
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+            image.save(tmp.name)
+            image_path = tmp.name
+
         result = table_engine(image_path)
 
         tables = []
 
         for res in result:
-            if res['type'] == 'table':
-                html = res['res']['html']
+            if res["type"] == "table":
+                html = res["res"]["html"]
+
+                # Convert HTML to DataFrame
                 dfs = pd.read_html(html)
-                if dfs:
-                    tables.append(dfs[0])
+                for df in dfs:
+                    tables.append(df)
 
         if not tables:
             print("   ❌ No table detected by PaddleOCR")
             return pd.DataFrame()
 
         final_df = pd.concat(tables, ignore_index=True)
+
+        # clean junk columns
         final_df = final_df.dropna(how="all")
-        final_df = final_df.loc[:, ~final_df.columns.str.contains('^Unnamed')]
+        final_df = final_df.loc[:, ~final_df.columns.astype(str).str.contains("^Unnamed")]
 
         return final_df
 
@@ -131,9 +135,10 @@ def extract_table_from_image_url(image_url):
         return pd.DataFrame()
 
     finally:
-        if os.path.exists(image_path):
+        try:
             os.remove(image_path)
-
+        except:
+            pass
 # ------------------ STEP 3: MAIN SCRAPER ------------------
 def scrape_schemes(company):
     posts = fetch_all_posts()

@@ -1,10 +1,10 @@
 # config.py
 
 COMPANIES = [
-    'Maruti Suzuki', 'Hyundai'
-    # , 'Mahindra', 'Kia', 'MG Motor',
-    # 'Toyota', 'Honda', 'Renault', 'Nissan', 'Skoda',
-    # 'Volkswagen', 'BYD', 'Volvo', 'Tata Motors'
+    'Maruti Suzuki', 'Hyundai',
+    'Mahindra', 'Kia', 'MG Motor',
+    'Toyota', 'Honda', 'Renault', 'Nissan', 'Skoda',
+    'Volkswagen', 'BYD', 'Volvo', 'Tata Motors'
 ]
 
 URLS = {
